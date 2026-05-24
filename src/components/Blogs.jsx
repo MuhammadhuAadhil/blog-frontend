@@ -84,6 +84,7 @@ function Blogs() {
   const [newContent, setNewContent] = useState("");
   const [editingBlogId, setEditingBlogId] = useState(null);
   const [likedBlogs, setLikedBlogs] = useState({});
+  const [likingBlogs, setLikingBlogs] = useState({});
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -128,28 +129,44 @@ function Blogs() {
       return;
     }
 
-    if (likedBlogs[blogId]) {
+    if (likedBlogs[blogId] || likingBlogs[blogId]) {
       return;
     }
 
+    setLikingBlogs((prev) => ({ ...prev, [blogId]: true }));
+    setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
+    setBlogs((prevBlogs) =>
+      prevBlogs.map((blog) =>
+        blog._id === blogId ? { ...blog, likes: blog.likes + 1 } : blog
+      )
+    );
+
     try {
-      const response = await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+      await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
         authorEmail: currentUser.email,
       });
-
-      if (response.status === 200) {
-        const updatedLikes = { ...likedBlogs, [blogId]: true };
-        setLikedBlogs(updatedLikes);
-        fetchBlogs();
-      }
     } catch (error) {
       if (error.response?.status === 409) {
-        setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
         window.alert("This email has already liked this blog.");
-        return;
+      } else {
+        setLikedBlogs((prev) => {
+          const updatedLikes = { ...prev };
+          delete updatedLikes[blogId];
+          return updatedLikes;
+        });
+        setBlogs((prevBlogs) =>
+          prevBlogs.map((blog) =>
+            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0) } : blog
+          )
+        );
+        console.error("Error liking the blog post:", error);
       }
-
-      console.error("Error liking the blog post:", error);
+    } finally {
+      setLikingBlogs((prev) => {
+        const updatedLikes = { ...prev };
+        delete updatedLikes[blogId];
+        return updatedLikes;
+      });
     }
   };
 
@@ -455,7 +472,7 @@ function Blogs() {
                   <div className="flex flex-wrap items-center gap-4">
                     <button
                       onClick={() => handleLike(blog._id)}
-                      disabled={Boolean(likedBlogs[blog._id])}
+                      disabled={Boolean(likedBlogs[blog._id] || likingBlogs[blog._id])}
                       className={`flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
                         likedBlogs[blog._id] ? "cursor-not-allowed opacity-70" : "hover:scale-105"
                       } ${index % 3 === 0 ? "text-white" : "text-[#173124]"}`}

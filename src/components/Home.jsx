@@ -80,6 +80,7 @@ function Home() {
   const navigate = useNavigate();
   const [blogs, setBlogs] = useState([]);
   const [likedBlogs, setLikedBlogs] = useState({});
+  const [likingBlogs, setLikingBlogs] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -127,28 +128,44 @@ function Home() {
       return;
     }
 
-    if (likedBlogs[blogId]) {
+    if (likedBlogs[blogId] || likingBlogs[blogId]) {
       return;
     }
 
+    setLikingBlogs((prev) => ({ ...prev, [blogId]: true }));
+    setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
+    setBlogs((prevBlogs) =>
+      prevBlogs.map((blog) =>
+        blog._id === blogId ? { ...blog, likes: blog.likes + 1 } : blog
+      )
+    );
+
     try {
-      const response = await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+      await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
         authorEmail: currentUser.email,
       });
-
-      if (response.status === 200) {
-        const updatedLikes = { ...likedBlogs, [blogId]: true };
-        setLikedBlogs(updatedLikes);
-        fetchBlogs();
-      }
     } catch (error) {
       if (error.response?.status === 409) {
-        setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
         window.alert("This email has already liked this blog.");
-        return;
+      } else {
+        setLikedBlogs((prev) => {
+          const updatedLikes = { ...prev };
+          delete updatedLikes[blogId];
+          return updatedLikes;
+        });
+        setBlogs((prevBlogs) =>
+          prevBlogs.map((blog) =>
+            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0) } : blog
+          )
+        );
+        console.error("Error liking the blog post:", error);
       }
-
-      console.error("Error liking the blog post:", error);
+    } finally {
+      setLikingBlogs((prev) => {
+        const updatedLikes = { ...prev };
+        delete updatedLikes[blogId];
+        return updatedLikes;
+      });
     }
   };
 
@@ -351,7 +368,7 @@ function Home() {
               <div className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
                 <button
                   onClick={() => handleLike(blog._id)}
-                  disabled={Boolean(likedBlogs[blog._id])}
+                  disabled={Boolean(likedBlogs[blog._id] || likingBlogs[blog._id])}
                   className={`flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
                     likedBlogs[blog._id] ? "cursor-not-allowed opacity-70" : "hover:scale-105"
                   } ${index === 0 ? "text-white" : "text-[#173124]"}`}
