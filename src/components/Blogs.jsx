@@ -61,15 +61,15 @@ function saveStoredAuthorEmailMap(map) {
   localStorage.setItem("authorEmailMap", JSON.stringify(map));
 }
 
-function getLikedBlogMap(blogs, email) {
-  if (!email) {
+function getLikedBlogMap(blogs, userId) {
+  if (!userId) {
     return {};
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedUserId = userId.trim();
 
   return blogs.reduce((likedMap, blog) => {
-    if (blog.likedByEmails?.includes(normalizedEmail)) {
+    if (blog.likedByUserIds?.includes(normalizedUserId)) {
       likedMap[blog._id] = true;
     }
 
@@ -109,7 +109,7 @@ function Blogs() {
   }, []);
 
   useEffect(() => {
-    setLikedBlogs(getLikedBlogMap(blogs, currentUser?.email || ""));
+    setLikedBlogs(getLikedBlogMap(blogs, currentUser?.uid || ""));
   }, [blogs, currentUser]);
 
   const fetchBlogs = () => {
@@ -143,6 +143,7 @@ function Blogs() {
 
     try {
       await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+        authorId: currentUser.uid,
         authorEmail: currentUser.email,
       });
     } catch (error) {
@@ -474,8 +475,12 @@ function Blogs() {
                       onClick={() => handleLike(blog._id)}
                       disabled={Boolean(likedBlogs[blog._id] || likingBlogs[blog._id])}
                       className={`flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
-                        likedBlogs[blog._id] ? "cursor-not-allowed opacity-70" : "hover:scale-105"
-                      } ${index % 3 === 0 ? "text-white" : "text-[#173124]"}`}
+                        likedBlogs[blog._id]
+                          ? "cursor-not-allowed text-[#d84b6a] opacity-100"
+                          : likingBlogs[blog._id]
+                            ? "cursor-progress opacity-80"
+                            : "hover:scale-105"
+                      } ${index % 3 === 0 && !likedBlogs[blog._id] ? "text-white" : ""} ${index % 3 !== 0 && !likedBlogs[blog._id] ? "text-[#173124]" : ""}`}
                     >
                       {likedBlogs[blog._id] ? <FaHeart className="text-lg text-[#d84b6a]" /> : <FiHeart className="text-lg" />}
                       Like
