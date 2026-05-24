@@ -61,9 +61,19 @@ function saveStoredAuthorEmailMap(map) {
   localStorage.setItem("authorEmailMap", JSON.stringify(map));
 }
 
-function getLikedBlogMap(blogs, userId) {
+function getLikedBlogMap(blogs, userId, userEmail) {
+  const normalizedUserId = userId.trim();
+  const normalizedUserEmail = userEmail.trim().toLowerCase();
+
   return blogs.reduce((likedMap, blog) => {
-    if (blog.likedByCurrentUser || (userId && blog.likedByUserIds?.includes(userId.trim()))) {
+    const likedByUserIds = Array.isArray(blog.likedByUserIds) ? blog.likedByUserIds : [];
+    const likedByEmails = Array.isArray(blog.likedByEmails) ? blog.likedByEmails : [];
+    const isLikedByCurrentUser =
+      blog.likedByCurrentUser ||
+      (normalizedUserId && likedByUserIds.includes(normalizedUserId)) ||
+      (normalizedUserEmail && likedByEmails.includes(normalizedUserEmail));
+
+    if (isLikedByCurrentUser) {
       likedMap[blog._id] = true;
     }
 
@@ -155,7 +165,7 @@ function Blogs() {
   }, [fetchBlogs]);
 
   useEffect(() => {
-    setLikedBlogs(getLikedBlogMap(blogs, currentUser?.uid || ""));
+    setLikedBlogs(getLikedBlogMap(blogs, currentUser?.uid || "", currentUser?.email || ""));
   }, [blogs, currentUser]);
 
   const handleLike = async (blogId) => {
