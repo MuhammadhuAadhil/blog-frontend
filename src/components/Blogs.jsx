@@ -88,6 +88,20 @@ function buildLikedBlogUpdate(blog, currentUser) {
   };
 }
 
+function buildUnlikedBlogUpdate(blog, currentUser) {
+  const likedByUserIds = Array.isArray(blog.likedByUserIds) ? blog.likedByUserIds : [];
+  const likedByEmails = Array.isArray(blog.likedByEmails) ? blog.likedByEmails : [];
+  const normalizedEmail = currentUser?.email?.toLowerCase();
+
+  return {
+    ...blog,
+    likes: Math.max((blog.likes || 0) - 1, 0),
+    likedByUserIds: currentUser?.uid ? likedByUserIds.filter((userId) => userId !== currentUser.uid) : likedByUserIds,
+    likedByEmails: normalizedEmail ? likedByEmails.filter((email) => email !== normalizedEmail) : likedByEmails,
+    likedByCurrentUser: false,
+  };
+}
+
 function Blogs() {
   const [blogs, setBlogs] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -150,20 +164,37 @@ function Blogs() {
       return;
     }
 
-    if (likedBlogs[blogId] || likingBlogs[blogId]) {
+    if (likingBlogs[blogId]) {
       return;
     }
 
+    const isLiked = Boolean(likedBlogs[blogId]);
+    const endpoint = isLiked ? "unlike" : "like";
+
     setLikingBlogs((prev) => ({ ...prev, [blogId]: true }));
-    setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
+    setLikedBlogs((prev) => {
+      const updatedLikes = { ...prev };
+
+      if (isLiked) {
+        delete updatedLikes[blogId];
+      } else {
+        updatedLikes[blogId] = true;
+      }
+
+      return updatedLikes;
+    });
     setBlogs((prevBlogs) =>
       prevBlogs.map((blog) =>
-        blog._id === blogId ? buildLikedBlogUpdate(blog, currentUser) : blog
+        blog._id === blogId
+          ? isLiked
+            ? buildUnlikedBlogUpdate(blog, currentUser)
+            : buildLikedBlogUpdate(blog, currentUser)
+          : blog
       )
     );
 
     try {
-      const response = await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+      const response = await axios.patch(`${API_BASE_URL}/api/blogs/${endpoint}/${blogId}`, {
         authorId: currentUser.uid,
         authorEmail: currentUser.email,
       });
@@ -180,20 +211,39 @@ function Blogs() {
             prevBlogs.map((blog) => (blog._id === blogId ? error.response.data.blog : blog))
           );
         }
-        setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
-        window.alert("This email has already liked this blog.");
+        setLikedBlogs((prev) => {
+          const updatedLikes = { ...prev };
+
+          if (error.response?.data?.liked) {
+            updatedLikes[blogId] = true;
+          } else {
+            delete updatedLikes[blogId];
+          }
+
+          return updatedLikes;
+        });
       } else {
         setLikedBlogs((prev) => {
           const updatedLikes = { ...prev };
-          delete updatedLikes[blogId];
+
+          if (isLiked) {
+            updatedLikes[blogId] = true;
+          } else {
+            delete updatedLikes[blogId];
+          }
+
           return updatedLikes;
         });
         setBlogs((prevBlogs) =>
           prevBlogs.map((blog) =>
-            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0), likedByCurrentUser: false } : blog
+            blog._id === blogId
+              ? isLiked
+                ? buildLikedBlogUpdate(blog, currentUser)
+                : buildUnlikedBlogUpdate(blog, currentUser)
+              : blog
           )
         );
-        console.error("Error liking the blog post:", error);
+        console.error(`Error ${endpoint}ing the blog post:`, error);
       }
     } finally {
       setLikingBlogs((prev) => {
@@ -506,10 +556,10 @@ function Blogs() {
                   <div className="flex flex-wrap items-center gap-4">
                     <button
                       onClick={() => handleLike(blog._id)}
-                      disabled={Boolean(likedBlogs[blog._id] || likingBlogs[blog._id])}
+                      disabled={Boolean(likingBlogs[blog._id])}
                       className={`flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
                         likedBlogs[blog._id]
-                          ? "cursor-not-allowed text-[#d84b6a] opacity-100"
+                          ? "text-[#d84b6a] opacity-100 hover:scale-105"
                           : likingBlogs[blog._id]
                             ? "cursor-progress opacity-80"
                             : "hover:scale-105"
