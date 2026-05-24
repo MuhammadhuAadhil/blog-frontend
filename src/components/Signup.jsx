@@ -215,9 +215,9 @@ function Signup() {
           <p className="text-xs font-semibold uppercase tracking-[0.5em] text-[#6d746c]">
             Join the studio
           </p>
-          <h2 className="mt-6 text-4xl leading-[0.95] sm:text-5xl md:text-6xl">Set up your account and start publishing with a stronger visual foundation.</h2>
+          <h2 className="mt-6 text-4xl leading-[0.95] sm:text-5xl md:text-6xl">Set up your account and start publishing thoughtful blog posts.</h2>
           <p className="mt-6 max-w-lg text-base leading-7 text-[#435048] md:leading-8">
-            The refreshed interface gives the project a more premium editorial feel, with better spacing, stronger typography, and cleaner page structure from the start.
+            The refreshed interface gives the project a premium editorial feel, with better spacing and cleaner structure for writing and reading articles.
           </p>
           <div className="relative mt-8 overflow-hidden rounded-[28px] border border-[#ccb999]">
             <img
@@ -229,7 +229,7 @@ function Signup() {
             <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
               <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#eef3ee]">Create account</p>
               <p className="mt-3 max-w-xs text-2xl leading-tight">
-                Start your writing journey with a warm, focused publishing space.
+                Start your writing journey with a calm, focused space for publishing articles.
               </p>
             </div>
           </div>

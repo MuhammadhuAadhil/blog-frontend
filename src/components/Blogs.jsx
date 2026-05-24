@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Footer from "./common/Footer";
 import auth from "../config/firebase";
@@ -62,19 +62,30 @@ function saveStoredAuthorEmailMap(map) {
 }
 
 function getLikedBlogMap(blogs, userId) {
-  if (!userId) {
-    return {};
-  }
-
-  const normalizedUserId = userId.trim();
-
   return blogs.reduce((likedMap, blog) => {
-    if (blog.likedByUserIds?.includes(normalizedUserId)) {
+    if (blog.likedByCurrentUser || (userId && blog.likedByUserIds?.includes(userId.trim()))) {
       likedMap[blog._id] = true;
     }
 
     return likedMap;
   }, {});
+}
+
+function buildLikedBlogUpdate(blog, currentUser) {
+  const likedByUserIds = Array.isArray(blog.likedByUserIds) ? blog.likedByUserIds : [];
+  const likedByEmails = Array.isArray(blog.likedByEmails) ? blog.likedByEmails : [];
+
+  return {
+    ...blog,
+    likes: blog.likes + 1,
+    likedByUserIds:
+      currentUser?.uid && !likedByUserIds.includes(currentUser.uid) ? [...likedByUserIds, currentUser.uid] : likedByUserIds,
+    likedByEmails:
+      currentUser?.email && !likedByEmails.includes(currentUser.email.toLowerCase())
+        ? [...likedByEmails, currentUser.email.toLowerCase()]
+        : likedByEmails,
+    likedByCurrentUser: true,
+  };
 }
 
 function Blogs() {
@@ -85,6 +96,27 @@ function Blogs() {
   const [editingBlogId, setEditingBlogId] = useState(null);
   const [likedBlogs, setLikedBlogs] = useState({});
   const [likingBlogs, setLikingBlogs] = useState({});
+
+  const fetchBlogs = useCallback((user = currentUser) => {
+    const params = {};
+
+    if (user?.uid) {
+      params.userId = user.uid;
+    }
+
+    if (user?.email) {
+      params.userEmail = user.email;
+    }
+
+    axios
+      .get(`${API_BASE_URL}/api/blogs`, { params })
+      .then((res) => {
+        setBlogs(res.data.reverse());
+      })
+      .catch(() => {
+        console.log("Error fetching data");
+      });
+  }, [currentUser]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -101,27 +133,16 @@ function Blogs() {
         }
         saveStoredAuthorEmailMap(authorMap);
       }
+
+      fetchBlogs(user || null);
     });
 
-    fetchBlogs();
-
     return unsubscribe;
-  }, []);
+  }, [fetchBlogs]);
 
   useEffect(() => {
     setLikedBlogs(getLikedBlogMap(blogs, currentUser?.uid || ""));
   }, [blogs, currentUser]);
-
-  const fetchBlogs = () => {
-    axios
-      .get(`${API_BASE_URL}/api/blogs`)
-      .then((res) => {
-        setBlogs(res.data.reverse());
-      })
-      .catch(() => {
-        console.log("Error fetching data");
-      });
-  };
 
   const handleLike = async (blogId) => {
     if (!currentUser?.email) {
@@ -137,17 +158,29 @@ function Blogs() {
     setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
     setBlogs((prevBlogs) =>
       prevBlogs.map((blog) =>
-        blog._id === blogId ? { ...blog, likes: blog.likes + 1 } : blog
+        blog._id === blogId ? buildLikedBlogUpdate(blog, currentUser) : blog
       )
     );
 
     try {
-      await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+      const response = await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
         authorId: currentUser.uid,
         authorEmail: currentUser.email,
       });
+
+      if (response.data?.blog) {
+        setBlogs((prevBlogs) =>
+          prevBlogs.map((blog) => (blog._id === blogId ? response.data.blog : blog))
+        );
+      }
     } catch (error) {
       if (error.response?.status === 409) {
+        if (error.response?.data?.blog) {
+          setBlogs((prevBlogs) =>
+            prevBlogs.map((blog) => (blog._id === blogId ? error.response.data.blog : blog))
+          );
+        }
+        setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
         window.alert("This email has already liked this blog.");
       } else {
         setLikedBlogs((prev) => {
@@ -157,7 +190,7 @@ function Blogs() {
         });
         setBlogs((prevBlogs) =>
           prevBlogs.map((blog) =>
-            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0) } : blog
+            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0), likedByCurrentUser: false } : blog
           )
         );
         console.error("Error liking the blog post:", error);
@@ -410,7 +443,7 @@ function Blogs() {
         <div className="mb-10 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.45em] text-[#8c7c63]">Archive</p>
-            <h2 className="mt-4 text-4xl sm:text-5xl md:text-6xl">Browse the collection</h2>
+            <h2 className="mt-4 text-4xl sm:text-5xl md:text-6xl">Browse your articles</h2>
           </div>
           <p className="max-w-xl text-base leading-8 text-[#55615a]">
             {isAdmin

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Footer from "./common/Footer";
 import auth from "../config/firebase";
@@ -6,11 +6,8 @@ import API_BASE_URL from "../config/api";
 import { FiArrowRight, FiClock, FiHeart } from "react-icons/fi";
 import { FaHeart } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-
-const heroImage =
-  "https://images.pexels.com/photos/3747468/pexels-photo-3747468.jpeg?cs=srgb&dl=pexels-cottonbro-3747468.jpg&fm=jpg";
-const showcaseImage =
-  "https://images.pexels.com/photos/590493/pexels-photo-590493.jpeg?cs=srgb&dl=pexels-lumn-590493.jpg&fm=jpg";
+import heroImage from "../assets/hero.jpg"
+import showcaseImage from "../assets/showcases.jpg"
 
 function getAuthorName(user) {
   if (!user) {
@@ -61,19 +58,30 @@ function saveStoredAuthorEmailMap(map) {
 }
 
 function getLikedBlogMap(blogs, userId) {
-  if (!userId) {
-    return {};
-  }
-
-  const normalizedUserId = userId.trim();
-
   return blogs.reduce((likedMap, blog) => {
-    if (blog.likedByUserIds?.includes(normalizedUserId)) {
+    if (blog.likedByCurrentUser || (userId && blog.likedByUserIds?.includes(userId.trim()))) {
       likedMap[blog._id] = true;
     }
 
     return likedMap;
   }, {});
+}
+
+function buildLikedBlogUpdate(blog, currentUser) {
+  const likedByUserIds = Array.isArray(blog.likedByUserIds) ? blog.likedByUserIds : [];
+  const likedByEmails = Array.isArray(blog.likedByEmails) ? blog.likedByEmails : [];
+
+  return {
+    ...blog,
+    likes: blog.likes + 1,
+    likedByUserIds:
+      currentUser?.uid && !likedByUserIds.includes(currentUser.uid) ? [...likedByUserIds, currentUser.uid] : likedByUserIds,
+    likedByEmails:
+      currentUser?.email && !likedByEmails.includes(currentUser.email.toLowerCase())
+        ? [...likedByEmails, currentUser.email.toLowerCase()]
+        : likedByEmails,
+    likedByCurrentUser: true,
+  };
 }
 
 function Home() {
@@ -82,6 +90,27 @@ function Home() {
   const [likedBlogs, setLikedBlogs] = useState({});
   const [likingBlogs, setLikingBlogs] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
+
+  const fetchBlogs = useCallback((user = currentUser) => {
+    const params = {};
+
+    if (user?.uid) {
+      params.userId = user.uid;
+    }
+
+    if (user?.email) {
+      params.userEmail = user.email;
+    }
+
+    axios
+      .get(`${API_BASE_URL}/api/blogs`, { params })
+      .then((res) => {
+        setBlogs(res.data.reverse());
+      })
+      .catch(() => {
+        console.log("Error fetching data");
+      });
+  }, [currentUser]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -100,27 +129,16 @@ function Home() {
         }
         saveStoredAuthorEmailMap(authorMap);
       }
+
+      fetchBlogs(user || null);
     });
 
-    fetchBlogs();
-
     return unsubscribe;
-  }, []);
+  }, [fetchBlogs]);
 
   useEffect(() => {
     setLikedBlogs(getLikedBlogMap(blogs, currentUser?.uid || ""));
   }, [blogs, currentUser]);
-
-  const fetchBlogs = () => {
-    axios
-      .get(`${API_BASE_URL}/api/blogs`)
-      .then((res) => {
-        setBlogs(res.data.reverse());
-      })
-      .catch(() => {
-        console.log("Error fetching data");
-      });
-  };
 
   const handleLike = async (blogId) => {
     if (!currentUser?.email) {
@@ -136,17 +154,29 @@ function Home() {
     setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
     setBlogs((prevBlogs) =>
       prevBlogs.map((blog) =>
-        blog._id === blogId ? { ...blog, likes: blog.likes + 1 } : blog
+        blog._id === blogId ? buildLikedBlogUpdate(blog, currentUser) : blog
       )
     );
 
     try {
-      await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
+      const response = await axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, {
         authorId: currentUser.uid,
         authorEmail: currentUser.email,
       });
+
+      if (response.data?.blog) {
+        setBlogs((prevBlogs) =>
+          prevBlogs.map((blog) => (blog._id === blogId ? response.data.blog : blog))
+        );
+      }
     } catch (error) {
       if (error.response?.status === 409) {
+        if (error.response?.data?.blog) {
+          setBlogs((prevBlogs) =>
+            prevBlogs.map((blog) => (blog._id === blogId ? error.response.data.blog : blog))
+          );
+        }
+        setLikedBlogs((prev) => ({ ...prev, [blogId]: true }));
         window.alert("This email has already liked this blog.");
       } else {
         setLikedBlogs((prev) => {
@@ -156,7 +186,7 @@ function Home() {
         });
         setBlogs((prevBlogs) =>
           prevBlogs.map((blog) =>
-            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0) } : blog
+            blog._id === blogId ? { ...blog, likes: Math.max(blog.likes - 1, 0), likedByCurrentUser: false } : blog
           )
         );
         console.error("Error liking the blog post:", error);
@@ -192,17 +222,17 @@ function Home() {
 
   return (
     <div className="text-[#1c241f]">
-      <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 md:px-5 md:pb-14 md:pt-10">
+      <section className="mx-auto max-w-7xl px-4 pb-12 pt-4 md:px-5 md:pb-14 md:pt-8">
         <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
-          <div>
+          <div className="lg:-mt-4">
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.35em] text-[#8c7c63] sm:mb-6 sm:text-xs sm:tracking-[0.5em]">
-              Personal journal
+              Stories & Insights
             </p>
             <h1 className="max-w-4xl text-4xl leading-[0.95] text-[#122219] sm:text-5xl md:text-7xl lg:text-8xl">
               Quiet thoughts, sharp design, and stories from the digital studio.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-[#5f655d] md:mt-8 md:text-lg md:leading-8">
-             Built for readers who enjoy technology, design, coding, and thoughtful storytelling in a minimal and modern environment.
+             Built for readers who enjoy technology, coding, and thoughtful writing in a calm modern space.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap sm:gap-4">
@@ -237,7 +267,7 @@ function Home() {
             </div>
           </div>
 
-          <div className="relative">
+          <div className="relative md:pt-2 lg:pt-3">
             <div className="absolute -left-8 top-10 hidden h-28 w-28 rounded-full bg-[#d9c4a0]/70 blur-3xl lg:block" />
             <div className="absolute right-6 top-0 hidden h-32 w-32 rounded-full bg-[#8ea48f]/40 blur-3xl lg:block" />
 
@@ -252,19 +282,19 @@ function Home() {
 
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#c3d2cb] sm:text-xs sm:tracking-[0.35em]">
-                  Featured Thought
+                  Featured Article
                 </p>
                 <span className="rounded-full border border-[#476857] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-[#dce7e1] sm:text-xs sm:tracking-[0.25em]">
-                  Design Memo
+                  Weekly Note
                 </span>
               </div>
 
               <h2 className="mt-6 text-3xl leading-[1] sm:mt-8 sm:text-4xl md:text-5xl lg:text-6xl">
-                Great design feels natural long before it feels impressive.
+                Strong writing feels effortless when reading stays clear and focused.
               </h2>
 
               <p className="mt-6 max-w-xl text-base leading-8 text-[#d4e0da]">
-                The modern web is not only about shipping features. It is about building rhythm, trust, and clarity so people enjoy staying with the experience.
+                A good blog needs structure, trust, and clarity so readers stay focused on the ideas being shared.
               </p>
 
               <div className="mt-10 grid gap-4 rounded-[28px] border border-[#355645] bg-white/5 p-5 text-sm text-[#dce7e1] sm:grid-cols-2">
@@ -272,13 +302,13 @@ function Home() {
                   <p className="font-sans text-xs font-semibold uppercase tracking-[0.3em] text-[#9cb0a5]">
                     Focus
                   </p>
-                  <p className="mt-2 text-lg">Editorial UI and frontend craft</p>
+                  <p className="mt-2 text-lg">Blog writing and frontend craft</p>
                 </div>
                 <div>
                   <p className="font-sans text-xs font-semibold uppercase tracking-[0.3em] text-[#9cb0a5]">
                     Goal
                   </p>
-                  <p className="mt-2 text-lg">Readable, memorable, human-centered pages</p>
+                  <p className="mt-2 text-lg">Readable text-first pages</p>
                 </div>
               </div>
 
@@ -302,7 +332,7 @@ function Home() {
             <h2 className="mt-4 text-4xl text-[#14261c] sm:text-5xl md:text-6xl">Latest Articles</h2>
           </div>
           <p className="max-w-xl text-base leading-8 text-[#55615a]">
-            Read the newest essays on frontend development, interface craft, creative process, and the details that make digital products feel considered.
+            Read the newest essays on frontend development, article writing, and thoughtful text-based publishing.
           </p>
         </div>
 
@@ -315,13 +345,13 @@ function Home() {
             />
             <div className="p-6 md:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.38em] text-[#8c7c63]">
-                Visual direction
+                Editorial direction
               </p>
               <h3 className="mt-4 text-4xl leading-none text-[#14261c]">
-                A warmer, image-led editorial experience.
+                A calmer, text-first editorial experience.
               </h3>
               <p className="mt-4 text-base leading-8 text-[#55615a]">
-                Adding imagery helps break the heavy text rhythm and gives the layout more personality without losing readability.
+                Strong headings and clean spacing make long-form writing easier to read without distracting from the content.
               </p>
             </div>
           </div>

@@ -109,7 +109,7 @@ function Login() {
         <div className="rounded-[28px] border border-[#ddd4c7] bg-[#fffaf4]/80 shadow-[0_24px_60px_rgba(36,43,39,0.08)] backdrop-blur md:rounded-[34px]">
           <div className="p-6 sm:p-8 md:p-10">
             <h2 className="text-3xl text-[#14261c] sm:text-4xl md:text-5xl">Login</h2>
-            <p className="mt-3 text-[#667067]">Use your account credentials to enter the editorial workspace.</p>
+            <p className="mt-3 text-[#667067]">Use your account credentials to enter your writing and publishing workspace.</p>
 
             <form onSubmit={handleLogin} className="mt-8 space-y-6">
               <div>
