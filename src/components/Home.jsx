@@ -108,6 +108,27 @@ function buildUnlikedBlogUpdate(blog, currentUser) {
   };
 }
 
+async function toggleBlogLike(blogId, currentUser, shouldUnlike) {
+  const payload = {
+    authorId: currentUser.uid,
+    authorEmail: currentUser.email,
+  };
+
+  if (!shouldUnlike) {
+    return axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, payload);
+  }
+
+  try {
+    return await axios.patch(`${API_BASE_URL}/api/blogs/unlike/${blogId}`, payload);
+  } catch (error) {
+    if (error.response?.status === 404 || error.response?.status === 405) {
+      return axios.patch(`${API_BASE_URL}/api/blogs/like/${blogId}`, payload);
+    }
+
+    throw error;
+  }
+}
+
 function Home() {
   const navigate = useNavigate();
   const [blogs, setBlogs] = useState([]);
@@ -175,8 +196,6 @@ function Home() {
     }
 
     const isLiked = Boolean(likedBlogs[blogId]);
-    const endpoint = isLiked ? "unlike" : "like";
-
     setLikingBlogs((prev) => ({ ...prev, [blogId]: true }));
     setLikedBlogs((prev) => {
       const updatedLikes = { ...prev };
@@ -200,16 +219,25 @@ function Home() {
     );
 
     try {
-      const response = await axios.patch(`${API_BASE_URL}/api/blogs/${endpoint}/${blogId}`, {
-        authorId: currentUser.uid,
-        authorEmail: currentUser.email,
-      });
+      const response = await toggleBlogLike(blogId, currentUser, isLiked);
 
       if (response.data?.blog) {
         setBlogs((prevBlogs) =>
           prevBlogs.map((blog) => (blog._id === blogId ? response.data.blog : blog))
         );
       }
+
+      setLikedBlogs((prev) => {
+        const updatedLikes = { ...prev };
+
+        if (response.data?.liked) {
+          updatedLikes[blogId] = true;
+        } else {
+          delete updatedLikes[blogId];
+        }
+
+        return updatedLikes;
+      });
     } catch (error) {
       if (error.response?.status === 409) {
         if (error.response?.data?.blog) {
@@ -249,7 +277,7 @@ function Home() {
               : blog
           )
         );
-        console.error(`Error ${endpoint}ing the blog post:`, error);
+        console.error("Error toggling the blog like:", error);
       }
     } finally {
       setLikingBlogs((prev) => {
